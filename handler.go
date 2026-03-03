@@ -6,9 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type handler struct {
@@ -64,12 +66,37 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fsPath)
 }
 
-// dirEntry 是目录列表的条目
+// dirEntry 是文件/目录的统一元数据结构
 type dirEntry struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"` // "file" | "directory"
 	Size     int64  `json:"size,omitempty"`
+	URL      string `json:"url"`
 	Modified string `json:"modified"`
+}
+
+func buildDirEntry(info os.FileInfo, basePath string) dirEntry {
+	name := info.Name()
+	modTime := info.ModTime().UTC().Format(time.RFC3339)
+	de := dirEntry{
+		Name:     name,
+		Modified: modTime,
+	}
+
+	if !strings.HasSuffix(basePath, "/") {
+		basePath += "/"
+	}
+
+	if info.IsDir() {
+		de.Type = "directory"
+		de.Name += "/"
+		de.URL = basePath + url.PathEscape(name) + "/"
+	} else {
+		de.Type = "file"
+		de.Size = info.Size()
+		de.URL = basePath + url.PathEscape(name)
+	}
+	return de
 }
 
 func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPath string) {
@@ -79,6 +106,11 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 		return
 	}
 
+	displayPath := "/" + strings.TrimLeft(urlPath, "/")
+	if displayPath != "/" && !strings.HasSuffix(displayPath, "/") {
+		displayPath += "/"
+	}
+
 	// 构建条目列表：文件夹优先，按名称排序
 	var dirs, files []dirEntry
 	for _, e := range entries {
@@ -86,17 +118,11 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 		if err != nil {
 			continue
 		}
-		de := dirEntry{
-			Name:     e.Name(),
-			Modified: info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
-		}
+
+		de := buildDirEntry(info, displayPath)
 		if e.IsDir() {
-			de.Type = "directory"
-			de.Name += "/"
 			dirs = append(dirs, de)
 		} else {
-			de.Type = "file"
-			de.Size = info.Size()
 			files = append(files, de)
 		}
 	}
@@ -110,10 +136,7 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 	// Content Negotiation
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"path":    "/" + strings.TrimLeft(urlPath, "/"),
-			"entries": all,
-		})
+		writeJSON(w, http.StatusOK, all)
 		return
 	}
 
@@ -123,11 +146,6 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 	readmePath := filepath.Join(fsPath, "README.md")
 	if data, err := os.ReadFile(readmePath); err == nil {
 		readmeHTML = renderMarkdown(data)
-	}
-
-	displayPath := "/" + strings.TrimLeft(urlPath, "/")
-	if displayPath != "/" && !strings.HasSuffix(displayPath, "/") {
-		displayPath += "/"
 	}
 
 	renderDirHTML(w, displayPath, all, readmeHTML)
@@ -181,7 +199,12 @@ func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
 	if isNew {
 		status = http.StatusCreated
 	}
-	writeJSON(w, status, map[string]string{"path": "/" + strings.TrimLeft(urlPath, "/")})
+	if info, err := os.Stat(fsPath); err == nil {
+		basePath := filepath.Dir("/" + strings.TrimLeft(urlPath, "/"))
+		writeJSON(w, status, buildDirEntry(info, basePath))
+	} else {
+		writeJSON(w, status, map[string]string{"path": "/" + strings.TrimLeft(urlPath, "/")})
+	}
 }
 
 // ---------- POST (multipart) ----------
@@ -244,12 +267,19 @@ func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("POST %s", fsPath)
-	resultPath := "/" + strings.TrimLeft(strings.TrimPrefix(fsPath, h.dataDir), "/")
 	status := http.StatusOK
 	if isNew {
 		status = http.StatusCreated
 	}
-	writeJSON(w, status, map[string]string{"path": resultPath})
+
+	if info, err := os.Stat(fsPath); err == nil {
+		basePath := "/" + strings.TrimLeft(urlPath, "/")
+		writeJSON(w, status, buildDirEntry(info, basePath))
+	} else {
+		// 降级处理
+		resultPath := "/" + strings.TrimLeft(strings.TrimPrefix(fsPath, h.dataDir), "/")
+		writeJSON(w, status, map[string]string{"path": resultPath})
+	}
 }
 
 // ---------- DELETE ----------

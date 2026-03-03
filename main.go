@@ -2,10 +2,34 @@ package main
 
 import (
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"strings"
 )
+
+func init() {
+	// Register common mime types manually in case the OS (e.g. Alpine) lacks mailcap/mime.types
+	mimes := map[string]string{
+		".json": "application/json; charset=utf-8",
+		".txt":  "text/plain; charset=utf-8",
+		".md":   "text/markdown; charset=utf-8",
+		".html": "text/html; charset=utf-8",
+		".css":  "text/css; charset=utf-8",
+		".js":   "application/javascript",
+		".png":  "image/png",
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".gif":  "image/gif",
+		".svg":  "image/svg+xml",
+		".pdf":  "application/pdf",
+		".zip":  "application/zip",
+		".bin":  "application/octet-stream",
+	}
+	for ext, typ := range mimes {
+		_ = mime.AddExtensionType(ext, typ)
+	}
+}
 
 func main() {
 	token := os.Getenv("ADMIN_TOKEN")

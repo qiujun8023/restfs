@@ -1,0 +1,10 @@
+services:
+  depot:
+    image: ${DOCKER_REGISTRY}/depot:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+    restart: unless-stopped

@@ -12,22 +12,23 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o restfs .
 
 # ---- runtime ----
 FROM alpine:3.23
-RUN apk add --no-cache ca-certificates tzdata && \
-    addgroup -S app && adduser -S -G app app
+RUN apk add --no-cache ca-certificates tzdata su-exec
 
 WORKDIR /app
 COPY --from=builder /app/restfs .
-
-RUN mkdir -p /data && chown app:app /data
-USER app
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /data
 
 VOLUME ["/data"]
 EXPOSE 8080
 
 ENV DATA_DIR="/data" \
-    PORT="8080"
+    PORT="8080" \
+    PUID="1000" \
+    PGID="1000"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -qO /dev/null http://localhost:${PORT:-8080}/ || exit 1
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["./restfs"]

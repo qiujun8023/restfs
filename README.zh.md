@@ -88,6 +88,8 @@
 | `ADMIN_TOKEN` | **必填** | 写操作和删除操作的认证 Token |
 | `DATA_DIR` | `/data` | 存储文件的根目录 |
 | `PORT` | `8080` | 服务监听端口 |
+| `PUID` | `1000` | 进程运行及文件属主的 UID |
+| `PGID` | `1000` | 进程运行及文件属主的 GID |
 
 ## 快速开始
 
@@ -97,11 +99,11 @@
 docker run -d \
   -p 8080:8080 \
   -e ADMIN_TOKEN=your-secret-token \
+  -e PUID=$(id -u) \
+  -e PGID=$(id -g) \
   -v $(pwd)/data:/data \
   qiujun8023/restfs:latest
 ```
-
-> 挂载的数据目录需对容器用户（UID 1000）有写权限。
 
 **Docker Compose：**
 

@@ -8,3 +8,5 @@ services:
       - ./data:/data
     environment:
       - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}

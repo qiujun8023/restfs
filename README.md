@@ -87,6 +87,8 @@ Authentication uses the HTTP header: `Authorization: Bearer <ADMIN_TOKEN>`
 | `ADMIN_TOKEN` | **required** | Token for write and delete operations |
 | `DATA_DIR` | `/data` | Root directory for stored files |
 | `PORT` | `8080` | Port the server listens on |
+| `PUID` | `1000` | UID of the user that owns and runs the process |
+| `PGID` | `1000` | GID of the user that owns and runs the process |
 
 ## Quick start
 
@@ -96,6 +98,8 @@ Authentication uses the HTTP header: `Authorization: Bearer <ADMIN_TOKEN>`
 docker run -d \
   -p 8080:8080 \
   -e ADMIN_TOKEN=your-secret-token \
+  -e PUID=$(id -u) \
+  -e PGID=$(id -g) \
   -v $(pwd)/data:/data \
   qiujun8023/restfs:latest
 ```

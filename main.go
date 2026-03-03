@@ -66,7 +66,7 @@ func main() {
 	// DELETE: 删除文件（需鉴权，不支持删目录）
 	mux.HandleFunc("DELETE /{path...}", requireAuth(token, h.handleDelete))
 
-	log.Printf("depot listening on :%s, data dir: %s", port, dataDir)
+	log.Printf("restfs listening on :%s, data dir: %s", port, dataDir)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatal(err)
 	}

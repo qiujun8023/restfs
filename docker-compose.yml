@@ -1,6 +1,6 @@
 services:
-  depot:
-    image: ${DOCKER_REGISTRY}/depot:latest
+  restfs:
+    image: ${DOCKER_REGISTRY}/restfs:latest
     ports:
       - "8080:8080"
     volumes:

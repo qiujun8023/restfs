@@ -8,14 +8,14 @@ RUN go mod download
 
 # 编译
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o depot .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o restfs .
 
 # ---- runtime ----
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
-COPY --from=builder /app/depot .
+COPY --from=builder /app/restfs .
 
 VOLUME ["/data"]
 EXPOSE 8080
@@ -23,4 +23,4 @@ EXPOSE 8080
 ENV DATA_DIR="/data" \
     PORT="8080"
 
-CMD ["./depot"]
+CMD ["./restfs"]

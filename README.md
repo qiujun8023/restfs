@@ -1,4 +1,4 @@
-# depot
+# restfs
 
 一个轻量级的 HTTP 文件服务器。支持无鉴权公开读取，写入（上传、覆盖、删除）统一通过 `ADMIN_TOKEN` 鉴权。非常适合用来分发构建产物、固件或用作简易图床。
 
@@ -115,14 +115,14 @@ curl -X DELETE \
 |---|---|---|
 | `DOCKERHUB_USERNAME` | 你的 Docker Hub **用户名** | `qiujun` |
 | `DOCKERHUB_TOKEN` | Docker Hub 个人 Access Token（在 Account Settings -> Security 中生成）或密码 | `dckr_pat_xxxx` |
-| `FILE_SERVER_TOKEN` | 用于展示在后续 CI 给 depot 发文件时的对应密码。可以任取，和启动服务时的 ADMIN_TOKEN 保持一致即可 | `my_super_secret` |
+| `FILE_SERVER_TOKEN` | 用于展示在后续 CI 给 restfs 发文件时的对应密码。可以任取，和启动服务时的 ADMIN_TOKEN 保持一致即可 | `my_super_secret` |
 
 ### 其他项目借助该 CI 传文件的范例：
 
-如果你的某个独立工程需要将 release 的 `app.bin` 直接打包分发给这个 depot 文件服务器：
+如果你的某个独立工程需要将 release 的 `app.bin` 直接打包分发给这个 restfs 文件服务器：
 
 ```yaml
-- name: 上传构建物到 depot 文件分发服
+- name: 上传构建物到 restfs 文件分发服
   run: |
     curl -X PUT \
       -H "Authorization: Bearer ${{ secrets.FILE_SERVER_TOKEN }}" \

@@ -1,4 +1,4 @@
-module github.com/qiujun8023/depot
+module github.com/qiujun8023/restfs
 
 go 1.22.0
 

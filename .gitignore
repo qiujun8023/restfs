@@ -1,6 +1,6 @@
-# depot
+# restfs
 
-depot/*
+restfs/*
 data/
 .env
-depot
+restfs

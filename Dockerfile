@@ -20,8 +20,7 @@ COPY --from=builder /app/depot .
 VOLUME ["/data"]
 EXPOSE 8080
 
-ENV ADMIN_TOKEN="" \
-    DATA_DIR="/data" \
+ENV DATA_DIR="/data" \
     PORT="8080"
 
 CMD ["./depot"]

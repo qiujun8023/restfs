@@ -5,8 +5,8 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -71,7 +71,7 @@ type dirEntry struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"` // "file" | "directory"
 	Size     int64  `json:"size,omitempty"`
-	URL      string `json:"url"`
+	Path     string `json:"path"`
 	Modified string `json:"modified"`
 }
 
@@ -90,11 +90,11 @@ func buildDirEntry(info os.FileInfo, basePath string) dirEntry {
 	if info.IsDir() {
 		de.Type = "directory"
 		de.Name += "/"
-		de.URL = basePath + url.PathEscape(name) + "/"
+		de.Path = basePath + url.PathEscape(name) + "/"
 	} else {
 		de.Type = "file"
 		de.Size = info.Size()
-		de.URL = basePath + url.PathEscape(name)
+		de.Path = basePath + url.PathEscape(name)
 	}
 	return de
 }
@@ -166,14 +166,12 @@ func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 不允许写到目录
-	if info, err := os.Stat(fsPath); err == nil && info.IsDir() {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is a directory"})
-		return
-	}
-
 	isNew := true
-	if _, err := os.Stat(fsPath); err == nil {
+	if info, err := os.Stat(fsPath); err == nil {
+		if info.IsDir() {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is a directory"})
+			return
+		}
 		isNew = false
 	}
 
@@ -272,14 +270,9 @@ func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 
-	if info, err := os.Stat(fsPath); err == nil {
-		basePath := "/" + strings.TrimLeft(urlPath, "/")
-		writeJSON(w, status, buildDirEntry(info, basePath))
-	} else {
-		// 降级处理
-		resultPath := "/" + strings.TrimLeft(strings.TrimPrefix(fsPath, h.dataDir), "/")
-		writeJSON(w, status, map[string]string{"path": resultPath})
-	}
+	info, _ := os.Stat(fsPath)
+	basePath := "/" + strings.TrimLeft(urlPath, "/")
+	writeJSON(w, status, buildDirEntry(info, basePath))
 }
 
 // ---------- DELETE ----------

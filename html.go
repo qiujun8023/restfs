@@ -12,7 +12,7 @@ import (
 	goldhtml "github.com/yuin/goldmark/renderer/html"
 )
 
-// renderMarkdown 将 Markdown 字节转换为安全 HTML 字符串
+// renderMarkdown 将 Markdown 转换为 HTML（保留原始 HTML 内容）
 func renderMarkdown(src []byte) string {
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
@@ -188,10 +188,10 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
               <div class="name-cell">
                 {{if eq .Type "directory"}}
                   <span class="icon">📁</span>
-                  <a class="name-link dir-link" href="{{.Name}}">{{.Name}}</a>
+                  <a class="name-link dir-link" href="{{.Path}}">{{.Name}}</a>
                 {{else}}
                   <span class="icon">📄</span>
-                  <a class="name-link" href="{{.Name}}">{{.Name}}</a>
+                  <a class="name-link" href="{{.Path}}">{{.Name}}</a>
                 {{end}}
               </div>
             </td>

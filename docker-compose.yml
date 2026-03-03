@@ -1,10 +1,10 @@
 services:
   restfs:
-    image: ${DOCKER_REGISTRY}/restfs:latest
+    image: qiujun8023/restfs:latest
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
       - ./data:/data
     environment:
       - ADMIN_TOKEN=${ADMIN_TOKEN}
-    restart: unless-stopped

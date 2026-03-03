@@ -42,14 +42,14 @@ Authentication uses the HTTP header: `Authorization: Bearer <ADMIN_TOKEN>`
   {
     "name": "subdir/",
     "type": "directory",
-    "url": "/path/to/subdir/",
+    "path": "/path/to/subdir/",
     "modified": "2024-01-01T00:00:00Z"
   },
   {
     "name": "file.txt",
     "type": "file",
     "size": 1024,
-    "url": "/path/to/file.txt",
+    "path": "/path/to/file.txt",
     "modified": "2024-01-01T00:00:00Z"
   }
 ]
@@ -62,7 +62,7 @@ Authentication uses the HTTP header: `Authorization: Bearer <ADMIN_TOKEN>`
   "name": "firmware.bin",
   "type": "file",
   "size": 524288,
-  "url": "/firmware/v1.0.0/firmware.bin",
+  "path": "/firmware/v1.0.0/firmware.bin",
   "modified": "2024-01-01T00:00:00Z"
 }
 ```
@@ -101,14 +101,14 @@ docker run -d \
 **Docker Compose:**
 
 ```bash
-DOCKER_REGISTRY=qiujun8023 ADMIN_TOKEN=your-secret-token docker compose up -d
+ADMIN_TOKEN=your-secret-token docker compose up -d
 ```
 
 **From source:**
 
 ```bash
 go build -o restfs .
-ADMIN_TOKEN=your-secret-token ./restfs
+ADMIN_TOKEN=your-secret-token DATA_DIR=/tmp/restfs ./restfs
 ```
 
 ## Examples

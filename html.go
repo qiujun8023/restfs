@@ -25,7 +25,6 @@ func renderMarkdown(src []byte) string {
 	return buf.String()
 }
 
-// breadcrumbPart 是面包屑导航的单个节点
 type breadcrumbPart struct {
 	Name   string
 	Href   string
@@ -234,7 +233,6 @@ func renderDirHTML(w http.ResponseWriter, path string, entries []dirEntry, readm
 	}
 }
 
-// formatSize 将字节数格式化为易读字符串
 func formatSize(size int64) string {
 	const (
 		KB = 1024
@@ -243,11 +241,11 @@ func formatSize(size int64) string {
 	)
 	switch {
 	case size >= GB:
-		return fmt.Sprintf("%.1f GB", float64(size)/float64(GB))
+		return fmt.Sprintf("%.2f GB", float64(size)/float64(GB))
 	case size >= MB:
-		return fmt.Sprintf("%.1f MB", float64(size)/float64(MB))
+		return fmt.Sprintf("%.2f MB", float64(size)/float64(MB))
 	case size >= KB:
-		return fmt.Sprintf("%.1f KB", float64(size)/float64(KB))
+		return fmt.Sprintf("%.2f KB", float64(size)/float64(KB))
 	default:
 		return fmt.Sprintf("%d B", size)
 	}

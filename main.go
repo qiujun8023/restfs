@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	// Register common mime types manually in case the OS (e.g. Alpine) lacks mailcap/mime.types
+	// Alpine 等精简系统可能缺少 mailcap/mime.types，手动注册常用类型作为兜底
 	mimes := map[string]string{
 		".json": "application/json; charset=utf-8",
 		".txt":  "text/plain; charset=utf-8",
@@ -47,23 +47,16 @@ func main() {
 		port = "8080"
 	}
 
-	// 确保 dataDir 以 / 结尾
+	// 去掉末尾的 /，保证拼接路径时格式统一
 	dataDir = strings.TrimRight(dataDir, "/")
 
 	h := &handler{dataDir: dataDir, token: token}
 
 	mux := http.NewServeMux()
 
-	// GET: 读文件 / 列目录（无需鉴权），/{path...} 本身也匹配根路径
 	mux.HandleFunc("GET /{path...}", h.handleGet)
-
-	// PUT: 上传文件（需鉴权）
 	mux.HandleFunc("PUT /{path...}", requireAuth(token, h.handlePut))
-
-	// POST: 表单上传（需鉴权）
 	mux.HandleFunc("POST /{path...}", requireAuth(token, h.handlePost))
-
-	// DELETE: 删除文件（需鉴权，不支持删目录）
 	mux.HandleFunc("DELETE /{path...}", requireAuth(token, h.handleDelete))
 
 	log.Printf("restfs listening on :%s, data dir: %s", port, dataDir)

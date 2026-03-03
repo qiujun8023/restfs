@@ -18,7 +18,6 @@ type handler struct {
 	token   string
 }
 
-// writeJSON 写入 JSON 响应
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -27,16 +26,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // resolvePath 将 URL 路径解析为绝对文件系统路径，防止路径穿越
 func (h *handler) resolvePath(urlPath string) (string, bool) {
-	// 清理路径
 	clean := filepath.Join(h.dataDir, filepath.FromSlash("/"+urlPath))
-	// 确保在 dataDir 内
 	if !strings.HasPrefix(clean, h.dataDir+string(filepath.Separator)) && clean != h.dataDir {
 		return "", false
 	}
 	return clean, true
 }
-
-// ---------- GET ----------
 
 func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.PathValue("path")
@@ -66,7 +61,6 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fsPath)
 }
 
-// dirEntry 是文件/目录的统一元数据结构
 type dirEntry struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"` // "file" | "directory"
@@ -111,7 +105,6 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 		displayPath += "/"
 	}
 
-	// 构建条目列表：文件夹优先，按名称排序
 	var dirs, files []dirEntry
 	for _, e := range entries {
 		info, err := e.Info()
@@ -133,15 +126,12 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 		all = []dirEntry{}
 	}
 
-	// Content Negotiation
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		writeJSON(w, http.StatusOK, all)
 		return
 	}
 
-	// 默认 HTML
-	// 读取 README.md 内容（如果有）
 	var readmeHTML string
 	readmePath := filepath.Join(fsPath, "README.md")
 	if data, err := os.ReadFile(readmePath); err == nil {
@@ -150,8 +140,6 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 
 	renderDirHTML(w, displayPath, all, readmeHTML)
 }
-
-// ---------- PUT ----------
 
 func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.PathValue("path")
@@ -175,19 +163,31 @@ func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
 		isNew = false
 	}
 
-	if err := os.MkdirAll(filepath.Dir(fsPath), 0o755); err != nil {
+	dir := filepath.Dir(fsPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	f, err := os.Create(fsPath)
+	// 先写临时文件，完成后原子替换，避免写入中途被读到不完整内容
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	defer f.Close()
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // 成功 rename 后此 Remove 为空操作，失败时清理临时文件
 
-	if _, err := io.Copy(f, r.Body); err != nil {
+	if _, err := io.Copy(tmp, r.Body); err != nil {
+		tmp.Close()
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := os.Rename(tmpName, fsPath); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -204,8 +204,6 @@ func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, map[string]string{"path": "/" + strings.TrimLeft(urlPath, "/")})
 	}
 }
-
-// ---------- POST (multipart) ----------
 
 func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.PathValue("path")
@@ -252,14 +250,25 @@ func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dst, err := os.Create(fsPath)
+	// 先写临时文件，完成后原子替换，避免写入中途被读到不完整内容
+	tmp, err := os.CreateTemp(dirFsPath, ".tmp-*")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	defer dst.Close()
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // 成功 rename 后此 Remove 为空操作，失败时清理临时文件
 
-	if _, err := io.Copy(dst, file); err != nil {
+	if _, err := io.Copy(tmp, file); err != nil {
+		tmp.Close()
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := os.Rename(tmpName, fsPath); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -274,8 +283,6 @@ func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	basePath := "/" + strings.TrimLeft(urlPath, "/")
 	writeJSON(w, status, buildDirEntry(info, basePath))
 }
-
-// ---------- DELETE ----------
 
 func (h *handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.PathValue("path")
@@ -311,8 +318,6 @@ func (h *handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("DELETE %s", fsPath)
-
-	// 同步自底向上清理所有空父目录
 	pruneEmptyDirs(filepath.Dir(fsPath), h.dataDir)
 
 	w.WriteHeader(http.StatusNoContent)

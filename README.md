@@ -1,5 +1,7 @@
 # restfs
 
+[中文](README.zh.md)
+
 A lightweight HTTP file server. Reads are public and unauthenticated; writes (upload, overwrite, delete) are protected by a single `ADMIN_TOKEN`.
 
 Ideal for distributing build artifacts, firmware images, or as a simple file host.

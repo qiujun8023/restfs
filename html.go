@@ -8,17 +8,28 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/tdewolff/minify/v2"
+	"github.com/tdewolff/minify/v2/css"
+	mhtml "github.com/tdewolff/minify/v2/html"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	goldhtml "github.com/yuin/goldmark/renderer/html"
 )
 
+var minifier = minify.New()
+
+var md = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithRendererOptions(goldhtml.WithUnsafe()),
+)
+
+func init() {
+	minifier.AddFunc("text/css", css.Minify)
+	minifier.AddFunc("text/html", mhtml.Minify)
+}
+
 // renderMarkdown 将 Markdown 转换为 HTML（保留原始 HTML 内容）
 func renderMarkdown(src []byte) string {
-	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
-		goldmark.WithRendererOptions(goldhtml.WithUnsafe()),
-	)
 	var buf bytes.Buffer
 	if err := md.Convert(src, &buf); err != nil {
 		return ""
@@ -79,7 +90,6 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
       --border: #e5e7eb;
       --primary: #2563eb;
       --row-hover: #f3f4f6;
-      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
       --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -250,15 +260,25 @@ type dirTemplateData struct {
 }
 
 func renderDirHTML(w http.ResponseWriter, path string, entries []dirEntry, readmeName, readmeHTML string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := dirTmpl.Execute(w, dirTemplateData{
+	var buf bytes.Buffer
+	if err := dirTmpl.Execute(&buf, dirTemplateData{
 		Path:       path,
 		Entries:    entries,
 		ReadmeName: readmeName,
 		ReadmeHTML: readmeHTML,
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	var minBuf bytes.Buffer
+	if err := minifier.Minify("text/html", &minBuf, &buf); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(minBuf.Bytes())
 }
 
 func formatSize(size int64) string {

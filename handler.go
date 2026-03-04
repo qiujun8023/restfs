@@ -133,7 +133,7 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 	}
 
 	// 按命名规范优先级选取 readme 文件（仅在渲染 HTML 时需要）：
-	// README.md(3) > README.MD(2) > readme.md(1) > 其他大小写变体(0)
+	// README.md(3) > readme.md(2) > README.MD(1) > 其他大小写变体(0)
 	var bestReadmeName string
 	bestScore := -1
 	for _, e := range entries {
@@ -144,9 +144,9 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 		switch e.Name() {
 		case "README.md":
 			score = 3
-		case "README.MD":
-			score = 2
 		case "readme.md":
+			score = 2
+		case "README.MD":
 			score = 1
 		}
 		if score > bestScore {
@@ -305,6 +305,9 @@ func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	basePath := "/" + strings.TrimLeft(urlPath, "/")
+	if !strings.HasSuffix(basePath, "/") {
+		basePath += "/"
+	}
 	if info, err := os.Stat(fsPath); err == nil {
 		writeJSON(w, status, buildDirEntry(info, basePath))
 	} else {

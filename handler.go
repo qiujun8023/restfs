@@ -121,10 +121,9 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 	}
 	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Name < dirs[j].Name })
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
-	all := append(dirs, files...)
-	if all == nil {
-		all = []dirEntry{}
-	}
+	all := make([]dirEntry, 0, len(dirs)+len(files))
+	all = append(all, dirs...)
+	all = append(all, files...)
 
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
@@ -166,6 +165,26 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 	renderDirHTML(w, displayPath, all, bestReadmeName, readmeHTML)
 }
 
+// atomicWrite 将 r 的内容原子写入 dst：先写临时文件再 rename，避免写入中途被读到不完整内容
+func atomicWrite(dst string, r io.Reader) error {
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // 成功 rename 后此 Remove 为空操作，失败时清理临时文件
+
+	if _, err := io.Copy(tmp, r); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, dst)
+}
+
 func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.PathValue("path")
 	if urlPath == "" {
@@ -188,31 +207,11 @@ func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
 		isNew = false
 	}
 
-	dir := filepath.Dir(fsPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(fsPath), 0o755); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	// 先写临时文件，完成后原子替换，避免写入中途被读到不完整内容
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // 成功 rename 后此 Remove 为空操作，失败时清理临时文件
-
-	if _, err := io.Copy(tmp, r.Body); err != nil {
-		tmp.Close()
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if err := tmp.Close(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if err := os.Rename(tmpName, fsPath); err != nil {
+	if err := atomicWrite(fsPath, r.Body); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -274,26 +273,7 @@ func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	// 先写临时文件，完成后原子替换，避免写入中途被读到不完整内容
-	tmp, err := os.CreateTemp(dirFsPath, ".tmp-*")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // 成功 rename 后此 Remove 为空操作，失败时清理临时文件
-
-	if _, err := io.Copy(tmp, file); err != nil {
-		tmp.Close()
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if err := tmp.Close(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if err := os.Rename(tmpName, fsPath); err != nil {
+	if err := atomicWrite(fsPath, file); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -367,7 +347,7 @@ func pruneEmptyDirs(dir, root string) {
 		if err := os.Remove(dir); err != nil {
 			break
 		}
-		log.Printf("pruned empty dir: %s", dir)
+		log.Printf("PRUNE %s", dir)
 		dir = filepath.Dir(dir)
 	}
 }

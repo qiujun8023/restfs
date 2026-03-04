@@ -130,15 +130,18 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
       border-bottom: 1px solid var(--border);
     }
     th.right, td.right { text-align: right; }
-    tr { border-bottom: 1px solid var(--border); transition: background-color 0.2s; }
+    tr { border-bottom: 1px solid var(--border); transition: background-color 0.2s; position: relative; }
     tr:last-child { border-bottom: none; }
     tr:hover { background-color: var(--row-hover); }
     
     .name-cell { display: flex; align-items: center; gap: 12px; }
     .icon { font-size: 20px; width: 24px; text-align: center; color: var(--text-muted); }
     .name-link { color: var(--text-main); text-decoration: none; font-weight: 500; transition: color 0.2s; }
+    .name-link::after { content: ""; position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
+    .name-link:focus { outline: 2px solid var(--primary); outline-offset: -2px; }
+    .name-link:focus:not(:focus-visible) { outline: none; }
     .name-link:hover { color: var(--primary); }
-    .dir-link { color: var(--primary); font-weight: 600; }
+    .dir-link { font-weight: 600; }
     .size, .mtime { color: var(--text-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
     .empty { text-align: center; padding: 48px; color: var(--text-muted); }
 
@@ -189,11 +192,11 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
 <body>
   <div class="container">
     <nav class="breadcrumb">
-      {{range $i, $p := splitBreadcrumb .Path}}
+      {{range splitBreadcrumb .Path}}
         {{if .IsLast}}
-          <span class="current">{{if eq $i 0}}~{{else}}{{.Name}}{{end}}</span>
+          <span class="current">{{.Name}}</span>
         {{else}}
-          <a href="{{.Href}}">{{if eq $i 0}}~{{else}}{{.Name}}{{end}}</a>
+          <a href="{{.Href}}">{{.Name}}</a>
           <span class="sep">/</span>
         {{end}}
       {{end}}

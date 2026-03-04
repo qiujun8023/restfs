@@ -1,3 +1,32 @@
+# Binaries
 restfs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+*.out
+
+# Project specific
 data/
 .env
+.env.*
+!.env.example
+
+# Editor and IDEs
+.vscode/
+.idea/
+*.swp
+*.iml
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

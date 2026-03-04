@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -47,8 +48,12 @@ func main() {
 		port = "8080"
 	}
 
-	// 去掉末尾的 /，保证拼接路径时格式统一
+	// 转换为绝对路径，支持 "./data" 形式的相对路径；
+	// filepath.Abs 内部会 Clean，已去除末尾 /，此处 TrimRight 作为 Abs 失败时的兜底
 	dataDir = strings.TrimRight(dataDir, "/")
+	if absDir, err := filepath.Abs(dataDir); err == nil {
+		dataDir = absDir
+	}
 
 	h := &handler{dataDir: dataDir, token: token}
 

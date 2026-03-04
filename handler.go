@@ -132,13 +132,38 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 		return
 	}
 
-	var readmeHTML string
-	readmePath := filepath.Join(fsPath, "README.md")
-	if data, err := os.ReadFile(readmePath); err == nil {
-		readmeHTML = renderMarkdown(data)
+	// 按命名规范优先级选取 readme 文件（仅在渲染 HTML 时需要）：
+	// README.md(3) > README.MD(2) > readme.md(1) > 其他大小写变体(0)
+	var bestReadmeName string
+	bestScore := -1
+	for _, e := range entries {
+		if e.IsDir() || !strings.EqualFold(e.Name(), "readme.md") {
+			continue
+		}
+		score := 0 // 兜底：匹配到大小写变体但未在下方列出
+		switch e.Name() {
+		case "README.md":
+			score = 3
+		case "README.MD":
+			score = 2
+		case "readme.md":
+			score = 1
+		}
+		if score > bestScore {
+			bestScore = score
+			bestReadmeName = e.Name()
+		}
 	}
 
-	renderDirHTML(w, displayPath, all, readmeHTML)
+	var readmeHTML string
+	if bestReadmeName != "" {
+		readmePath := filepath.Join(fsPath, bestReadmeName)
+		if data, err := os.ReadFile(readmePath); err == nil {
+			readmeHTML = renderMarkdown(data)
+		}
+	}
+
+	renderDirHTML(w, displayPath, all, bestReadmeName, readmeHTML)
 }
 
 func (h *handler) handlePut(w http.ResponseWriter, r *http.Request) {
@@ -279,9 +304,12 @@ func (h *handler) handlePost(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 
-	info, _ := os.Stat(fsPath)
 	basePath := "/" + strings.TrimLeft(urlPath, "/")
-	writeJSON(w, status, buildDirEntry(info, basePath))
+	if info, err := os.Stat(fsPath); err == nil {
+		writeJSON(w, status, buildDirEntry(info, basePath))
+	} else {
+		writeJSON(w, status, map[string]string{"path": basePath + url.PathEscape(filename)})
+	}
 }
 
 func (h *handler) handleDelete(w http.ResponseWriter, r *http.Request) {

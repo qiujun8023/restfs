@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -49,7 +50,7 @@ func splitBreadcrumb(path string) []breadcrumbPart {
 		if seg == "" {
 			continue
 		}
-		href += seg + "/"
+		href += url.PathEscape(seg) + "/"
 		parts = append(parts, breadcrumbPart{
 			Name:   seg,
 			Href:   href,
@@ -77,8 +78,9 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
       --text-muted: #6b7280;
       --border: #e5e7eb;
       --primary: #2563eb;
-      --primary-hover: #1d4ed8;
       --row-hover: #f3f4f6;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -86,70 +88,92 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
       background-color: var(--bg);
       color: var(--text-main);
       line-height: 1.5;
-      padding: 64px 24px;
+      padding: 48px 24px;
       -webkit-font-smoothing: antialiased;
     }
     .container { max-width: 960px; margin: 0 auto; }
     
     .breadcrumb {
       display: flex; align-items: center; flex-wrap: wrap;
-      font-size: 24px; font-weight: 600; margin-bottom: 24px;
+      font-size: 20px; font-weight: 600; margin-bottom: 24px;
       color: var(--text-main); padding: 0 4px; letter-spacing: -0.01em;
     }
-    .breadcrumb a { color: var(--text-muted); text-decoration: none; transition: color 0.15s; }
-    .breadcrumb a:hover { color: var(--text-main); }
-    .breadcrumb .sep { color: #d1d5db; margin: 0 12px; font-weight: 400; user-select: none; }
+    .breadcrumb a { color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+    .breadcrumb a:hover { color: var(--primary); }
+    .breadcrumb .sep { color: #d1d5db; margin: 0 10px; font-weight: 400; user-select: none; }
     .breadcrumb .current { color: var(--text-main); }
 
     .card {
       background: var(--card-bg); border-radius: 12px;
-      box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
+      box-shadow: var(--shadow);
       border: 1px solid var(--border); overflow: hidden;
+    }
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
     }
     table { width: 100%; border-collapse: collapse; text-align: left; }
     th, td { padding: 14px 24px; white-space: nowrap; }
     th {
-      background-color: #f8fafc; font-size: 12px; font-weight: 600;
-      color: var(--text-muted); text-transform: uppercase;
-      letter-spacing: 0.05em; border-bottom: 1px solid var(--border);
+      background-color: #f8fafc; font-size: 13px; font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
     }
     th.right, td.right { text-align: right; }
-    tr { border-bottom: 1px solid var(--border); transition: background-color 0.15s; }
+    tr { border-bottom: 1px solid var(--border); transition: background-color 0.2s; }
     tr:last-child { border-bottom: none; }
     tr:hover { background-color: var(--row-hover); }
     
     .name-cell { display: flex; align-items: center; gap: 12px; }
-    .icon { font-size: 18px; width: 24px; text-align: center; color: var(--text-muted); }
-    .name-link { color: var(--text-main); text-decoration: none; font-weight: 500; }
+    .icon { font-size: 20px; width: 24px; text-align: center; color: var(--text-muted); }
+    .name-link { color: var(--text-main); text-decoration: none; font-weight: 500; transition: color 0.2s; }
     .name-link:hover { color: var(--primary); }
-    .dir-link { color: var(--primary); }
-    .dir-link:hover { text-decoration: underline; }
+    .dir-link { color: var(--primary); font-weight: 600; }
     .size, .mtime { color: var(--text-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
     .empty { text-align: center; padding: 48px; color: var(--text-muted); }
 
-    .readme-card { margin-top: 32px; padding-bottom: 32px; }
+    .readme-card { margin-top: 32px; padding-bottom: 0; }
     .readme-header {
       padding: 12px 24px; background-color: #f8fafc;
       border-bottom: 1px solid var(--border); font-weight: 600;
-      font-size: 13px; color: var(--text-muted); display: flex;
-      align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.05em;
+      font-size: 14px; color: var(--text-muted); display: flex;
+      align-items: center; gap: 8px;
     }
-    .readme-body { padding: 32px 40px; color: #374151; font-size: 15px; line-height: 1.7; }
+    .readme-body { padding: 32px 40px; color: #374151; font-size: 15px; line-height: 1.7; overflow-wrap: break-word; }
     .readme-body h1, .readme-body h2, .readme-body h3, .readme-body h4 { color: #111827; font-weight: 700; margin: 1.5em 0 0.75em; }
-    .readme-body h1 { font-size: 2em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; margin-top: 0; }
-    .readme-body h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
-    .readme-body p { margin-bottom: 1em; }
+    .readme-body h1 { font-size: 2.2em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; margin-top: 0; }
+    .readme-body h2 { font-size: 1.7em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+    .readme-body p { margin-bottom: 1.2em; }
     .readme-body a { color: var(--primary); text-decoration: none; }
     .readme-body a:hover { text-decoration: underline; }
     .readme-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f1f5f9; padding: 0.2em 0.4em; border-radius: 4px; font-size: 0.9em; }
-    .readme-body pre { background: #1e293b; color: #f8fafc; padding: 16px 20px; border-radius: 8px; overflow-x: auto; margin-bottom: 1em; }
+    .readme-body pre { background: #1e293b; color: #f8fafc; padding: 16px 20px; border-radius: 8px; overflow-x: auto; margin-bottom: 1.2em; }
     .readme-body pre code { background: transparent; padding: 0; color: inherit; }
-    .readme-body ul, .readme-body ol { padding-left: 1.5em; margin-bottom: 1em; }
-    .readme-body blockquote { border-left: 4px solid #cbd5e1; padding-left: 1em; color: var(--text-muted); font-style: italic; margin-bottom: 1em; }
+    .readme-body ul, .readme-body ol { padding-left: 1.5em; margin-bottom: 1.2em; }
+    .readme-body blockquote { border-left: 4px solid #cbd5e1; padding-left: 1em; color: var(--text-muted); font-style: italic; margin-bottom: 1.2em; }
     .readme-body img { max-width: 100%; height: auto; border-radius: 6px; }
-    .readme-body table { border-collapse: collapse; margin-bottom: 1em; width: 100%; }
+    .readme-body table { border-collapse: collapse; margin-bottom: 1.2em; width: 100%; }
     .readme-body th, .readme-body td { border: 1px solid var(--border); padding: 8px 12px; }
     .readme-body th { background: #f8fafc; }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      body { padding: 24px 16px; }
+      th, td { padding: 12px 16px; }
+      .breadcrumb { font-size: 18px; margin-bottom: 16px; }
+      .readme-body { padding: 24px 20px; }
+      .readme-body h1 { font-size: 1.8em; }
+      .readme-body h2 { font-size: 1.5em; }
+    }
+    @media (max-width: 640px) {
+      body { padding: 16px 12px; }
+      .breadcrumb { font-size: 16px; margin-bottom: 12px; }
+      th, td { padding: 12px; }
+      .hide-mobile { display: none; }
+      .readme-body { padding: 16px 12px; }
+      .icon { font-size: 18px; width: 20px; }
+      .name-cell { gap: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -166,48 +190,50 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
     </nav>
 
     <div class="card">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th class="right">Size</th>
-            <th class="right">Modified (UTC)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{if ne .Path "/"}}
-          <tr>
-            <td><div class="name-cell"><span class="icon">↩</span><a class="name-link dir-link" href="../">..</a></div></td>
-            <td></td><td></td>
-          </tr>
-          {{end}}
-          {{range .Entries}}
-          <tr>
-            <td>
-              <div class="name-cell">
-                {{if eq .Type "directory"}}
-                  <span class="icon">📁</span>
-                  <a class="name-link dir-link" href="{{.Path}}">{{.Name}}</a>
-                {{else}}
-                  <span class="icon">📄</span>
-                  <a class="name-link" href="{{.Path}}">{{.Name}}</a>
-                {{end}}
-              </div>
-            </td>
-            <td class="size right">{{if eq .Type "directory"}}—{{else}}{{formatSize .Size}}{{end}}</td>
-            <td class="mtime right">{{.Modified}}</td>
-          </tr>
-          {{end}}
-          {{if eq (len .Entries) 0}}
-          <tr><td colspan="3" class="empty">Empty directory</td></tr>
-          {{end}}
-        </tbody>
-      </table>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th class="right">Size</th>
+              <th class="right hide-mobile">Modified (UTC)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{if ne .Path "/"}}
+            <tr>
+              <td><div class="name-cell"><span class="icon">↩</span><a class="name-link dir-link" href="../">..</a></div></td>
+              <td></td><td class="hide-mobile"></td>
+            </tr>
+            {{end}}
+            {{range .Entries}}
+            <tr>
+              <td>
+                <div class="name-cell">
+                  {{if eq .Type "directory"}}
+                    <span class="icon">📁</span>
+                    <a class="name-link dir-link" href="{{.Path}}">{{.Name}}</a>
+                  {{else}}
+                    <span class="icon">📄</span>
+                    <a class="name-link" href="{{.Path}}">{{.Name}}</a>
+                  {{end}}
+                </div>
+              </td>
+              <td class="size right">{{if eq .Type "directory"}}—{{else}}{{formatSize .Size}}{{end}}</td>
+              <td class="mtime right hide-mobile">{{.Modified}}</td>
+            </tr>
+            {{end}}
+            {{if eq (len .Entries) 0}}
+            <tr><td colspan="3" class="empty">Empty directory</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
     </div>
 
     {{if .ReadmeHTML}}
     <div class="card readme-card">
-      <div class="readme-header"><span>📄</span> README.md</div>
+      <div class="readme-header"><span>📄</span> {{.ReadmeName}}</div>
       <div class="readme-body">{{safeHTML .ReadmeHTML}}</div>
     </div>
     {{end}}
@@ -219,14 +245,16 @@ var dirTmpl = template.Must(template.New("dir").Funcs(template.FuncMap{
 type dirTemplateData struct {
 	Path       string
 	Entries    []dirEntry
+	ReadmeName string
 	ReadmeHTML string
 }
 
-func renderDirHTML(w http.ResponseWriter, path string, entries []dirEntry, readmeHTML string) {
+func renderDirHTML(w http.ResponseWriter, path string, entries []dirEntry, readmeName, readmeHTML string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := dirTmpl.Execute(w, dirTemplateData{
 		Path:       path,
 		Entries:    entries,
+		ReadmeName: readmeName,
 		ReadmeHTML: readmeHTML,
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -53,11 +53,13 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if info.IsDir() {
+		log.Printf("GET %s", fsPath)
 		h.serveDir(w, r, fsPath, urlPath)
 		return
 	}
 
 	// 文件：直接返回内容，http.ServeFile 自动处理 MIME、Range、缓存等
+	log.Printf("GET %s", fsPath)
 	http.ServeFile(w, r, fsPath)
 }
 

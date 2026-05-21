@@ -8,12 +8,16 @@ import (
 
 // requireAuth 是写/删操作的鉴权中间件，验证 Authorization: Bearer <ADMIN_TOKEN>
 func requireAuth(token string, next http.HandlerFunc) http.HandlerFunc {
+	want := []byte("Bearer " + token)
 	return func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		want := "Bearer " + token
-		if subtle.ConstantTimeCompare([]byte(auth), []byte(want)) != 1 {
-			log.Printf("auth failed: %s %s", r.Method, r.URL.Path)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		if subtle.ConstantTimeCompare([]byte(auth), want) != 1 {
+			reason := "invalid token"
+			if auth == "" {
+				reason = "missing Authorization header"
+			}
+			log.Printf("auth failed (%s): %s %s", reason, r.Method, r.URL.Path)
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		next(w, r)

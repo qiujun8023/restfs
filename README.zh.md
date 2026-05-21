@@ -9,6 +9,7 @@
 ## 功能
 
 - **公开读取** — 浏览目录和下载文件无需认证
+- **默认支持跨域** — 可从其他源的浏览器页面访问公开读取接口和带认证的写接口
 - **目录列表** — 浏览器友好的 HTML 页面，含面包屑导航；API 客户端通过 `Accept: application/json` 获取 JSON
 - **Markdown 渲染** — 任意目录下的 `README.md` 自动渲染在文件列表下方
 - **Token 保护写操作** — `PUT`、`POST`、`DELETE` 需要 `Authorization: Bearer <ADMIN_TOKEN>`
@@ -28,6 +29,12 @@
 | `DELETE` | `/<path>` | 是 | 删除文件（不支持删除目录） |
 
 认证方式：HTTP 请求头 `Authorization: Bearer <ADMIN_TOKEN>`
+
+### 跨域
+
+所有路由默认启用 CORS。服务允许任意来源（`Access-Control-Allow-Origin: *`），支持浏览器预检请求，并暴露 `Content-Range`、`Accept-Ranges`、`ETag`、`Last-Modified` 等断点续传和下载相关响应头。
+
+带认证的写操作仍然需要 `Authorization: Bearer <ADMIN_TOKEN>`。
 
 ### 内容协商（GET 目录）
 

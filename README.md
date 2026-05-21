@@ -9,6 +9,7 @@ Ideal for distributing build artifacts, firmware images, or as a simple file hos
 ## Features
 
 - **Public reads** — browsing directories and downloading files requires no authentication
+- **CORS enabled by default** — public reads and authenticated writes can be called from browsers on other origins
 - **Directory listing** — browser-friendly HTML with breadcrumb navigation; returns JSON for API clients via `Accept: application/json`
 - **Markdown rendering** — a `README.md` in any directory is automatically rendered below the file listing
 - **Token-protected writes** — `PUT`, `POST`, and `DELETE` require `Authorization: Bearer <ADMIN_TOKEN>`
@@ -16,6 +17,7 @@ Ideal for distributing build artifacts, firmware images, or as a simple file hos
 - **Empty dir pruning** — after a file is deleted, empty parent directories are cleaned up automatically
 - **Shell-compatible** — files can be managed directly on the host via `cp`, `rsync`, or `rm`; changes take effect immediately
 - **Lightweight Docker image** — Alpine-based single binary, ~10 MB
+- **Resumable downloads** — supports HTTP Range requests (`206 Partial Content`)
 
 ## HTTP API
 
@@ -27,6 +29,12 @@ Ideal for distributing build artifacts, firmware images, or as a simple file hos
 | `DELETE` | `/<path>` | Yes | Delete a file (directories cannot be deleted) |
 
 Authentication uses the HTTP header: `Authorization: Bearer <ADMIN_TOKEN>`
+
+### CORS
+
+CORS is enabled by default for all routes. The server allows any origin (`Access-Control-Allow-Origin: *`), supports browser preflight requests, and exposes range/download headers such as `Content-Range`, `Accept-Ranges`, `ETag`, and `Last-Modified`.
+
+Authenticated write operations still require `Authorization: Bearer <ADMIN_TOKEN>`.
 
 ### Content negotiation (GET on a directory)
 

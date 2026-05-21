@@ -11,6 +11,7 @@ Ideal for distributing build artifacts, firmware images, or as a simple file hos
 - **Public reads** — browsing directories and downloading files requires no authentication
 - **CORS enabled by default** — public reads and authenticated writes can be called from browsers on other origins
 - **Directory listing** — browser-friendly HTML with breadcrumb navigation; returns JSON for API clients via `Accept: application/json`
+- **Index page support** — if a directory contains an `index.html`, it is served instead of the listing for HTML requests; JSON requests still receive the listing
 - **Markdown rendering** — a `README.md` in any directory is automatically rendered below the file listing
 - **Token-protected writes** — `PUT`, `POST`, and `DELETE` require `Authorization: Bearer <ADMIN_TOKEN>`
 - **Auto mkdir** — parent directories are created automatically on upload (both PUT stream and POST multipart)
@@ -40,8 +41,10 @@ Authenticated write operations still require `Authorization: Bearer <ADMIN_TOKEN
 
 | `Accept` header | Response |
 |-----------------|----------|
-| `text/html` (browser default) | HTML directory page |
+| `text/html` (browser default) | HTML directory page, or `index.html` if present |
 | `application/json` | JSON array of entries |
+
+Directory paths without a trailing slash are redirected with `301` to the canonical trailing-slash form for HTML requests, so relative links in `index.html` resolve correctly. JSON requests (`?format=json` or `Accept: application/json`) are served in place without redirect.
 
 ### JSON formats
 
@@ -84,6 +87,7 @@ Authenticated write operations still require `Authorization: Bearer <ADMIN_TOKEN
 | `200` | Success (read, or overwriting an existing file) |
 | `201` | Created (new file) |
 | `204` | Deleted |
+| `301` | Directory path redirected to trailing-slash form |
 | `400` | Bad request (invalid path, path traversal, attempted directory delete, etc.) |
 | `401` | Missing or invalid token |
 | `404` | File or directory not found |

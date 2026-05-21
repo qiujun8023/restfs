@@ -1,6 +1,6 @@
 services:
   restfs:
-    image: qiujun8023/restfs:latest
+    image: ghcr.io/qiujun8023/restfs:latest
     restart: unless-stopped
     ports:
       - "8080:8080"

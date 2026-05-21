@@ -109,7 +109,7 @@ docker run -d \
   -e PUID=$(id -u) \
   -e PGID=$(id -g) \
   -v $(pwd)/data:/data \
-  qiujun8023/restfs:latest
+  ghcr.io/qiujun8023/restfs:latest
 ```
 
 **Docker Compose：**

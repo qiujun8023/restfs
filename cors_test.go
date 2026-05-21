@@ -18,13 +18,7 @@ func testServer(t *testing.T) http.Handler {
 	}
 
 	h := &handler{dataDir: dataDir, token: "secret"}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{path...}", h.handleGet)
-	mux.HandleFunc("PUT /{path...}", requireAuth("secret", h.handlePut))
-	mux.HandleFunc("POST /{path...}", requireAuth("secret", h.handlePost))
-	mux.HandleFunc("DELETE /{path...}", requireAuth("secret", h.handleDelete))
-
-	return withCORS(mux)
+	return withCORS(newMux(h, "secret"))
 }
 
 func TestCORSHeadersOnGet(t *testing.T) {

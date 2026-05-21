@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -17,13 +18,7 @@ func newServer(t *testing.T) (http.Handler, string) {
 	t.Helper()
 	dataDir := t.TempDir()
 	h := &handler{dataDir: dataDir, token: "secret"}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{path...}", h.handleGet)
-	mux.HandleFunc("HEAD /{path...}", h.handleGet)
-	mux.HandleFunc("PUT /{path...}", requireAuth("secret", h.handlePut))
-	mux.HandleFunc("POST /{path...}", requireAuth("secret", h.handlePost))
-	mux.HandleFunc("DELETE /{path...}", requireAuth("secret", h.handleDelete))
-	return withCORS(mux), dataDir
+	return withCORS(newMux(h, "secret")), dataDir
 }
 
 func do(t *testing.T, server http.Handler, method, target string, body io.Reader, auth bool) *httptest.ResponseRecorder {
@@ -216,6 +211,150 @@ func TestGetDirectoryHTMLByDefault(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "a.txt") {
 		t.Fatalf("body missing a.txt: %s", rr.Body.String())
+	}
+}
+
+func TestGetDirectoryIndexHTMLByDefault(t *testing.T) {
+	server, dataDir := newServer(t)
+	os.WriteFile(filepath.Join(dataDir, "index.html"), []byte("<h1>Home</h1>"), 0o644)
+	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "<h1>Home</h1>") {
+		t.Fatalf("body missing index.html content: %s", body)
+	}
+	if strings.Contains(body, "a.txt") {
+		t.Fatalf("directory listing rendered instead of index.html: %s", body)
+	}
+}
+
+func TestGetDirectoryIndexHTMLDoesNotOverrideJSON(t *testing.T) {
+	server, dataDir := newServer(t)
+	os.WriteFile(filepath.Join(dataDir, "index.html"), []byte("<h1>Home</h1>"), 0o644)
+	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
+
+	rr := do(t, server, http.MethodGet, "/?format=json", nil, false)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+	var entries []dirEntry
+	if err := json.Unmarshal(rr.Body.Bytes(), &entries); err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("len(entries) = %d, want 2: %+v", len(entries), entries)
+	}
+	names := []string{entries[0].Name, entries[1].Name}
+	if !slices.Contains(names, "a.txt") || !slices.Contains(names, "index.html") {
+		t.Fatalf("entries missing files: %+v", entries)
+	}
+}
+
+func TestGetSubdirectoryIndexHTML(t *testing.T) {
+	server, dataDir := newServer(t)
+	siteDir := filepath.Join(dataDir, "site")
+	os.Mkdir(siteDir, 0o755)
+	os.WriteFile(filepath.Join(siteDir, "index.html"), []byte("<h1>Site</h1>"), 0o644)
+	os.WriteFile(filepath.Join(siteDir, "page.txt"), []byte("page"), 0o644)
+
+	req := httptest.NewRequest(http.MethodGet, "/site/", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "<h1>Site</h1>") {
+		t.Fatalf("body missing site index.html content: %s", body)
+	}
+	if strings.Contains(body, "page.txt") {
+		t.Fatalf("directory listing rendered instead of site index.html: %s", body)
+	}
+}
+
+func TestGetDirectoryHTMLRedirectsToSlash(t *testing.T) {
+	server, dataDir := newServer(t)
+	os.Mkdir(filepath.Join(dataDir, "site"), 0o755)
+
+	req := httptest.NewRequest(http.MethodGet, "/site", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want 301", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/site/" {
+		t.Fatalf("Location = %q, want /site/", loc)
+	}
+}
+
+func TestGetDirectoryRedirectPreservesQuery(t *testing.T) {
+	server, dataDir := newServer(t)
+	os.Mkdir(filepath.Join(dataDir, "site"), 0o755)
+
+	req := httptest.NewRequest(http.MethodGet, "/site?x=1&y=%E4%B8%AD", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want 301", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/site/?x=1&y=%E4%B8%AD" {
+		t.Fatalf("Location = %q, want /site/?x=1&y=%%E4%%B8%%AD", loc)
+	}
+}
+
+func TestGetDirectoryNoSlashWithJSONFormatNotRedirected(t *testing.T) {
+	server, dataDir := newServer(t)
+	siteDir := filepath.Join(dataDir, "site")
+	os.Mkdir(siteDir, 0o755)
+	os.WriteFile(filepath.Join(siteDir, "a.txt"), []byte("a"), 0o644)
+
+	// 无尾斜杠 + format=json：应直接返回 JSON，不重定向
+	rr := do(t, server, http.MethodGet, "/site?format=json", nil, false)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (no redirect for JSON)", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+}
+
+func TestGetDirectoryIndexHTMLFallsBackWhenDir(t *testing.T) {
+	server, dataDir := newServer(t)
+	// index.html 本身是目录：应回退到目录列表，不应 ServeFile
+	os.Mkdir(filepath.Join(dataDir, "index.html"), 0o755)
+	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "a.txt") {
+		t.Fatalf("expected directory listing fallback, body: %s", body)
 	}
 }
 

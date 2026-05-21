@@ -93,6 +93,15 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if info.IsDir() && !wantsJSON(r) && urlPath != "" && !strings.HasSuffix(r.URL.Path, "/") {
+		target := urlAsDir(urlPath)
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+		return
+	}
+
 	log.Printf("%s %s", r.Method, fsPath)
 	if info.IsDir() {
 		h.serveDir(w, r, fsPath, urlPath)
@@ -163,6 +172,22 @@ func wantsJSON(r *http.Request) bool {
 }
 
 func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPath string) {
+	// 根据 Accept 切换 HTML/JSON：提示中间缓存按 Accept 分流
+	w.Header().Set("Vary", "Accept")
+
+	if !wantsJSON(r) {
+		indexPath := filepath.Join(fsPath, "index.html")
+		if info, err := os.Stat(indexPath); err == nil {
+			if !info.IsDir() {
+				http.ServeFile(w, r, indexPath)
+				return
+			}
+		} else if !os.IsNotExist(err) {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
 	entries, err := os.ReadDir(fsPath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -199,9 +224,6 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 	all := make([]dirEntry, 0, len(dirs)+len(files))
 	all = append(all, dirs...)
 	all = append(all, files...)
-
-	// 根据 Accept 切换 HTML/JSON：提示中间缓存按 Accept 分流
-	w.Header().Set("Vary", "Accept")
 
 	if wantsJSON(r) {
 		writeJSON(w, http.StatusOK, all)

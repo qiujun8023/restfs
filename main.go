@@ -37,6 +37,17 @@ func init() {
 	}
 }
 
+// newMux 装配 HTTP 路由：GET/HEAD 公开读，PUT/POST/DELETE 鉴权
+func newMux(h *handler, token string) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{path...}", h.handleGet)
+	mux.HandleFunc("HEAD /{path...}", h.handleGet)
+	mux.HandleFunc("PUT /{path...}", requireAuth(token, h.handlePut))
+	mux.HandleFunc("POST /{path...}", requireAuth(token, h.handlePost))
+	mux.HandleFunc("DELETE /{path...}", requireAuth(token, h.handleDelete))
+	return mux
+}
+
 func main() {
 	token := os.Getenv("ADMIN_TOKEN")
 	if token == "" {
@@ -61,16 +72,9 @@ func main() {
 
 	h := &handler{dataDir: dataDir, token: token}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{path...}", h.handleGet)
-	mux.HandleFunc("HEAD /{path...}", h.handleGet)
-	mux.HandleFunc("PUT /{path...}", requireAuth(token, h.handlePut))
-	mux.HandleFunc("POST /{path...}", requireAuth(token, h.handlePost))
-	mux.HandleFunc("DELETE /{path...}", requireAuth(token, h.handleDelete))
-
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           withCORS(mux),
+		Handler:           withCORS(newMux(h, token)),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		// 故意不设 ReadTimeout / WriteTimeout，以支持大文件的慢上传/慢下载

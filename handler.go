@@ -102,7 +102,7 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("%s %s", r.Method, fsPath)
+	log.Printf("%s /%s", r.Method, urlPath)
 	if info.IsDir() {
 		h.serveDir(w, r, fsPath, urlPath)
 		return
@@ -282,7 +282,7 @@ func (h *handler) writeAndRespond(w http.ResponseWriter, r *http.Request, fsPath
 		return
 	}
 
-	log.Printf("%s %s", r.Method, fsPath)
+	log.Printf("%s %s", r.Method, r.URL.Path)
 
 	status := http.StatusOK
 	if isNew {
@@ -396,7 +396,7 @@ func (h *handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("DELETE %s", fsPath)
+	log.Printf("DELETE /%s", urlPath)
 	pruneEmptyDirs(filepath.Dir(fsPath), h.dataDir)
 
 	w.WriteHeader(http.StatusNoContent)

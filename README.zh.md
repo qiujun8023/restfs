@@ -12,7 +12,7 @@
 - **默认支持跨域** — 可从其他源的浏览器页面访问公开读取接口和带认证的写接口
 - **目录列表** — 浏览器友好的 HTML 页面，含面包屑导航；API 客户端通过 `Accept: application/json` 获取 JSON
 - **index.html 入口页** — 目录下存在 `index.html` 时，浏览器请求该目录直接返回该文件而非目录列表；JSON 请求仍返回列表
-- **Markdown 渲染** — 任意目录下的 `README.md` 自动渲染在文件列表下方
+- **Markdown 渲染** — 任意目录下的 `README.md` 自动渲染在文件列表下方；文件名不区分大小写，其中的原始 HTML 会被转义
 - **Token 保护写操作** — `PUT`、`POST`、`DELETE` 需要 `Authorization: Bearer <ADMIN_TOKEN>`
 - **自动创建目录** — 上传时自动创建不存在的父级目录（PUT 流式上传和 POST 表单上传均支持）
 - **空目录清理** — 删除文件后，自动向上清理空父级目录
@@ -39,10 +39,11 @@
 
 ### 内容协商（GET 目录）
 
-| `Accept` 请求头 | 响应格式 |
-|-----------------|----------|
-| `text/html`（浏览器默认） | HTML 目录页面，或目录下的 `index.html`（若存在） |
-| `application/json` | JSON 数组 |
+| 请求 | 响应格式 |
+|------|----------|
+| `?format=json` 或 `Accept: application/json` | JSON 数组 |
+| `Accept: text/html`（浏览器默认） | HTML 目录页面，或目录下的 `index.html`（若存在） |
+| 其他（如 curl 默认的 `*/*`） | 同 `text/html` |
 
 目录路径缺少尾斜杠时，HTML 请求会被 `301` 重定向到带尾斜杠的规范地址，以确保 `index.html` 中的相对链接能正确解析。JSON 请求（`?format=json` 或 `Accept: application/json`）不会重定向，直接返回内容。
 

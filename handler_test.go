@@ -406,6 +406,37 @@ func TestGetFileServesContent(t *testing.T) {
 	}
 }
 
+func TestGetIndexHTMLFileNotRedirected(t *testing.T) {
+	server, dataDir := newServer(t)
+	os.MkdirAll(filepath.Join(dataDir, "site"), 0o755)
+	os.WriteFile(filepath.Join(dataDir, "site", "index.html"), []byte("<h1>hi</h1>"), 0o644)
+	rr := do(t, server, http.MethodGet, "/site/index.html", nil, false)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if rr.Body.String() != "<h1>hi</h1>" {
+		t.Fatalf("body = %q", rr.Body.String())
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+}
+
+func TestGetFileRange(t *testing.T) {
+	server, dataDir := newServer(t)
+	os.WriteFile(filepath.Join(dataDir, "hello.txt"), []byte("world"), 0o644)
+	req := httptest.NewRequest(http.MethodGet, "/hello.txt", nil)
+	req.Header.Set("Range", "bytes=1-3")
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+	if rr.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d, want 206", rr.Code)
+	}
+	if rr.Body.String() != "orl" {
+		t.Fatalf("body = %q", rr.Body.String())
+	}
+}
+
 func TestGetUnicodePath(t *testing.T) {
 	server, dataDir := newServer(t)
 	dir := filepath.Join(dataDir, "我的文件夹")

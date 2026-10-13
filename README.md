@@ -12,7 +12,7 @@ Ideal for distributing build artifacts, firmware images, or as a simple file hos
 - **CORS enabled by default** — public reads and authenticated writes can be called from browsers on other origins
 - **Directory listing** — browser-friendly HTML with breadcrumb navigation; returns JSON for API clients via `Accept: application/json`
 - **Index page support** — if a directory contains an `index.html`, it is served instead of the listing for HTML requests; JSON requests still receive the listing
-- **Markdown rendering** — a `README.md` in any directory is automatically rendered below the file listing
+- **Markdown rendering** — a `README.md` in any directory is automatically rendered below the file listing; the filename is case-insensitive and raw HTML in it is escaped
 - **Token-protected writes** — `PUT`, `POST`, and `DELETE` require `Authorization: Bearer <ADMIN_TOKEN>`
 - **Auto mkdir** — parent directories are created automatically on upload (both PUT stream and POST multipart)
 - **Empty dir pruning** — after a file is deleted, empty parent directories are cleaned up automatically
@@ -39,10 +39,11 @@ Authenticated write operations still require `Authorization: Bearer <ADMIN_TOKEN
 
 ### Content negotiation (GET on a directory)
 
-| `Accept` header | Response |
-|-----------------|----------|
-| `text/html` (browser default) | HTML directory page, or `index.html` if present |
-| `application/json` | JSON array of entries |
+| Request | Response |
+|---------|----------|
+| `?format=json` or `Accept: application/json` | JSON array of entries |
+| `Accept: text/html` (browser default) | HTML directory page, or `index.html` if present |
+| Anything else (e.g. curl's default `*/*`) | Same as `text/html` |
 
 Directory paths without a trailing slash are redirected with `301` to the canonical trailing-slash form for HTML requests, so relative links in `index.html` resolve correctly. JSON requests (`?format=json` or `Accept: application/json`) are served in place without redirect.
 

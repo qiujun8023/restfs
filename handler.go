@@ -107,7 +107,14 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		h.serveDir(w, r, fsPath, urlPath)
 		return
 	}
-	http.ServeFile(w, r, fsPath)
+	// 不用 http.ServeFile：它会把以 /index.html 结尾的请求 301 到 ./，导致无法直接下载 index.html
+	f, err := os.Open(fsPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer f.Close()
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 type dirEntry struct {

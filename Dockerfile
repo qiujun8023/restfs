@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.25-alpine AS builder
+FROM golang:1.27-alpine AS builder
 WORKDIR /app
 
 # 先下载依赖（利用 Docker 缓存层）
@@ -11,7 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o restfs .
 
 # ---- runtime ----
-FROM alpine:3.23
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata su-exec
 
 WORKDIR /app

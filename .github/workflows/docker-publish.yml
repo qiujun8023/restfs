@@ -13,6 +13,10 @@ env:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   docker:
     name: Build and publish image
@@ -23,6 +27,7 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        (github.event.workflow_run.head_branch == 'master' || startsWith(github.event.workflow_run.head_branch, 'v')))
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write

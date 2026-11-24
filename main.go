@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -37,14 +38,22 @@ func init() {
 	}
 }
 
-// newMux 装配 HTTP 路由：GET/HEAD 公开读，PUT/POST/DELETE 鉴权
-func newMux(h *handler, token string) *http.ServeMux {
+func parseBoolEnv(raw string, defaultVal bool) (bool, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultVal, nil
+	}
+	return strconv.ParseBool(trimmed)
+}
+
+// newMux 装配 HTTP 路由：GET/HEAD 读文件（目录列表按 PUBLIC_DIR_LIST 控制）、PUT/POST/DELETE 鉴权
+func newMux(h *handler) *http.ServeMux {
 	mux := http.NewServeMux()
+	// GET 路由同时匹配 HEAD。
 	mux.HandleFunc("GET /{path...}", h.handleGet)
-	mux.HandleFunc("HEAD /{path...}", h.handleGet)
-	mux.HandleFunc("PUT /{path...}", requireAuth(token, h.handlePut))
-	mux.HandleFunc("POST /{path...}", requireAuth(token, h.handlePost))
-	mux.HandleFunc("DELETE /{path...}", requireAuth(token, h.handleDelete))
+	mux.HandleFunc("PUT /{path...}", requireAuth(h.token, h.handlePut))
+	mux.HandleFunc("POST /{path...}", requireAuth(h.token, h.handlePost))
+	mux.HandleFunc("DELETE /{path...}", requireAuth(h.token, h.handleDelete))
 	return mux
 }
 
@@ -64,17 +73,22 @@ func main() {
 		port = "8080"
 	}
 
+	publicDirList, err := parseBoolEnv(os.Getenv("PUBLIC_DIR_LIST"), false)
+	if err != nil {
+		log.Fatalf("invalid PUBLIC_DIR_LIST value %q: %v", os.Getenv("PUBLIC_DIR_LIST"), err)
+	}
+
 	// 先去除末尾斜杠，再转绝对路径；Abs 内部会 Clean，TrimRight 是 Abs 失败时的兜底
 	dataDir = strings.TrimRight(dataDir, "/")
 	if absDir, err := filepath.Abs(dataDir); err == nil {
 		dataDir = absDir
 	}
 
-	h := &handler{dataDir: dataDir, token: token}
+	h := &handler{dataDir: dataDir, token: token, publicDirList: publicDirList}
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           withCORS(newMux(h, token)),
+		Handler:           withCORS(newMux(h)),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		// 故意不设 ReadTimeout / WriteTimeout，以支持大文件的慢上传/慢下载
@@ -82,7 +96,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("restfs listening on :%s, data dir: %s", port, dataDir)
+		log.Printf("restfs listening on :%s, data dir: %s, public dir list: %t", port, dataDir, publicDirList)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

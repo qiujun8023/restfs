@@ -2,16 +2,17 @@
 
 [English](README.md)
 
-一个轻量级 HTTP 文件服务器。读操作公开无需认证；写操作（上传、覆盖、删除）通过单一 `ADMIN_TOKEN` 保护。
+一个轻量级 HTTP 文件服务器。文件下载与 `index.html` 入口页公开访问；目录列表默认需 Basic Auth 登录（可通过 `PUBLIC_DIR_LIST=true` 公开）；写操作（上传、覆盖、删除）通过单一 `ADMIN_TOKEN` 保护。
 
 适合分发构建产物、固件镜像，或作为简单的文件托管服务。
 
 ## 功能
 
-- **公开读取** — 浏览目录和下载文件无需认证
-- **默认支持跨域** — 可从其他源的浏览器页面访问公开读取接口和带认证的写接口
+- **公开文件下载** — 下载文件及访问 `index.html` 无需认证
+- **目录列表权限开关** — 默认关闭公开列目录，访问目录列表时提示 Basic Auth 登录（账号 `admin`，密码 `ADMIN_TOKEN`）；设置 `PUBLIC_DIR_LIST=true` 后可公开浏览目录
+- **默认支持跨域** — 可从其他源的浏览器页面访问公开读取接口和带认证的接口
 - **目录列表** — 浏览器友好的 HTML 页面，含面包屑导航；API 客户端通过 `Accept: application/json` 获取 JSON
-- **index.html 入口页** — 目录下存在 `index.html` 时，浏览器请求该目录直接返回该文件而非目录列表；JSON 请求仍返回列表
+- **index.html 入口页** — 目录下存在 `index.html` 时，浏览器请求该目录直接公开返回该文件而非目录列表；JSON 请求仍返回列表（受 `PUBLIC_DIR_LIST` 控制）
 - **Markdown 渲染** — 任意目录下的 `README.md` 自动渲染在文件列表下方；文件名不区分大小写，其中的原始 HTML 会被转义
 - **Token 保护写操作** — `PUT`、`POST`、`DELETE` 需要 `Authorization: Bearer <ADMIN_TOKEN>`
 - **自动创建目录** — 上传时自动创建不存在的父级目录（PUT 流式上传和 POST 表单上传均支持）
@@ -24,18 +25,19 @@
 
 | 方法 | 路径 | 需要认证 | 说明 |
 |------|------|----------|------|
-| `GET` | `/<path>` | 否 | 下载文件或列出目录 |
+| `GET` | `/<path>` | 文件与 `index.html`：否；目录列表：`PUBLIC_DIR_LIST=false` 时需要 | 下载文件或列出目录 |
 | `PUT` | `/<path>` | 是 | 通过请求体流式上传文件，路径须包含文件名 |
 | `POST` | `/<path>/` | 是 | 通过 multipart 表单上传文件（字段名：`file`） |
 | `DELETE` | `/<path>` | 是 | 删除文件（不支持删除目录） |
 
-认证方式：HTTP 请求头 `Authorization: Bearer <ADMIN_TOKEN>`
+- 写操作认证方式：HTTP 请求头 `Authorization: Bearer <ADMIN_TOKEN>`
+- 目录列表认证方式（`PUBLIC_DIR_LIST=false` 时）：HTTP Basic Auth，账号 `admin`、密码 `<ADMIN_TOKEN>`（同时兼容 `Authorization: Bearer <ADMIN_TOKEN>`）
 
 ### 跨域
 
 所有路由默认启用 CORS。服务允许任意来源（`Access-Control-Allow-Origin: *`），支持浏览器预检请求，并暴露 `Content-Range`、`Accept-Ranges`、`ETag`、`Last-Modified` 等断点续传和下载相关响应头。
 
-带认证的写操作仍然需要 `Authorization: Bearer <ADMIN_TOKEN>`。
+带认证的请求（写操作，以及 `PUBLIC_DIR_LIST=false` 时的目录列表请求）仍然需要携带 `Authorization` 请求头。
 
 ### 内容协商（GET 目录）
 
@@ -90,14 +92,15 @@
 | `204` | 已删除 |
 | `301` | 目录路径重定向至带尾斜杠的规范地址 |
 | `400` | 请求错误（路径无效、路径穿越、尝试删除目录等） |
-| `401` | Token 缺失或错误 |
+| `401` | 认证凭据缺失或错误（Bearer Token 或 Basic Auth） |
 | `404` | 文件或目录不存在 |
 
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `ADMIN_TOKEN` | **必填** | 写操作和删除操作的认证 Token |
+| `ADMIN_TOKEN` | **必填** | 写操作和删除操作的认证 Token，同时作为目录列表 Basic Auth 密码 |
+| `PUBLIC_DIR_LIST` | `false` | 设为 `true` 时允许任何人列目录；设为 `false` 时列目录需 Basic Auth（`admin` / `ADMIN_TOKEN`） |
 | `DATA_DIR` | `/data` | 存储文件的根目录 |
 | `PORT` | `8080` | 服务监听端口 |
 | `PUID` | `1000` | 进程运行及文件属主的 UID |
@@ -151,13 +154,13 @@ curl -X POST \
 ### 浏览与下载
 
 ```bash
-# HTML 目录列表（浏览器友好）
-curl http://localhost:8080/firmware/
+# HTML 目录列表（未开启 PUBLIC_DIR_LIST=true 时需 Basic Auth）
+curl -u "admin:$ADMIN_TOKEN" http://localhost:8080/firmware/
 
 # JSON 列表（脚本使用）
-curl -H "Accept: application/json" http://localhost:8080/firmware/
+curl -u "admin:$ADMIN_TOKEN" -H "Accept: application/json" http://localhost:8080/firmware/
 
-# 下载文件
+# 下载文件（公开，无需认证）
 curl -O http://localhost:8080/firmware/v1.0.0/firmware.bin
 
 # 断点续传

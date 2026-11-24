@@ -16,9 +16,14 @@ import (
 
 func newServer(t *testing.T) (http.Handler, string) {
 	t.Helper()
+	return newServerWithPublicDirList(t, false)
+}
+
+func newServerWithPublicDirList(t *testing.T, publicDirList bool) (http.Handler, string) {
+	t.Helper()
 	dataDir := t.TempDir()
-	h := &handler{dataDir: dataDir, token: "secret"}
-	return withCORS(newMux(h, "secret")), dataDir
+	h := &handler{dataDir: dataDir, token: "secret", publicDirList: publicDirList}
+	return withCORS(newMux(h)), dataDir
 }
 
 func do(t *testing.T, server http.Handler, method, target string, body io.Reader, auth bool) *httptest.ResponseRecorder {
@@ -90,6 +95,44 @@ func TestPutRequiresAuth(t *testing.T) {
 	server.ServeHTTP(rr, req)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rr.Code)
+	}
+}
+
+func TestWritesRejectBasicAuth(t *testing.T) {
+	for _, method := range []string{http.MethodPut, http.MethodPost, http.MethodDelete} {
+		t.Run(method, func(t *testing.T) {
+			server, dataDir := newServer(t)
+			filename := filepath.Join(dataDir, "a.txt")
+			if err := os.WriteFile(filename, []byte("original"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			var body io.Reader = strings.NewReader("replacement")
+			target := "/a.txt"
+			var contentType string
+			if method == http.MethodPost {
+				body, contentType = multipartBody(t, "a.txt", "replacement")
+				target = "/"
+			}
+			req := httptest.NewRequest(method, target, body)
+			req.SetBasicAuth("admin", "secret")
+			if contentType != "" {
+				req.Header.Set("Content-Type", contentType)
+			}
+			rr := httptest.NewRecorder()
+			server.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", rr.Code)
+			}
+			data, err := os.ReadFile(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != "original" {
+				t.Fatalf("file changed after unauthorized write: %q", data)
+			}
+		})
 	}
 }
 
@@ -194,8 +237,8 @@ func TestDeleteNotFound(t *testing.T) {
 	}
 }
 
-func TestGetDirectoryHTMLByDefault(t *testing.T) {
-	server, dataDir := newServer(t)
+func TestGetDirectoryHTMLWhenPublicDirListEnabled(t *testing.T) {
+	server, dataDir := newServerWithPublicDirList(t, true)
 	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -211,6 +254,183 @@ func TestGetDirectoryHTMLByDefault(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "a.txt") {
 		t.Fatalf("body missing a.txt: %s", rr.Body.String())
+	}
+	if got := rr.Header().Get("Cache-Control"); got != "" {
+		t.Fatalf("public directory Cache-Control = %q, want empty", got)
+	}
+	if varies := rr.Header().Values("Vary"); slices.Contains(varies, "Authorization") {
+		t.Fatalf("public directory Vary = %v, should not include Authorization", varies)
+	}
+}
+
+func TestGetDirectoryRequiresBasicAuthByDefault(t *testing.T) {
+	const wantChallenge = `Basic realm="restfs", charset="UTF-8"`
+	server, dataDir := newServer(t)
+	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
+
+	t.Run("html without auth returns 401 with basic challenge", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Accept", "text/html")
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rr.Code)
+		}
+		if got := rr.Header().Get("WWW-Authenticate"); got != wantChallenge {
+			t.Fatalf("WWW-Authenticate = %q, want %q", got, wantChallenge)
+		}
+		if got := rr.Header().Get("Cache-Control"); got != "private" {
+			t.Fatalf("Cache-Control = %q, want private", got)
+		}
+		if varies := rr.Header().Values("Vary"); !slices.Contains(varies, "Accept") || !slices.Contains(varies, "Authorization") {
+			t.Fatalf("Vary = %v, want Accept and Authorization", varies)
+		}
+	})
+
+	t.Run("json without auth returns 401 with basic challenge", func(t *testing.T) {
+		rr := do(t, server, http.MethodGet, "/?format=json", nil, false)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rr.Code)
+		}
+		if got := rr.Header().Get("WWW-Authenticate"); got != wantChallenge {
+			t.Fatalf("WWW-Authenticate = %q, want %q", got, wantChallenge)
+		}
+	})
+
+	t.Run("head without auth returns 401", func(t *testing.T) {
+		rr := do(t, server, http.MethodHead, "/", nil, false)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rr.Code)
+		}
+		if got := rr.Header().Get("WWW-Authenticate"); got != wantChallenge {
+			t.Fatalf("WWW-Authenticate = %q, want %q", got, wantChallenge)
+		}
+	})
+
+	t.Run("wrong username rejected", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.SetBasicAuth("other", "secret")
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rr.Code)
+		}
+		if got := rr.Header().Get("WWW-Authenticate"); got != wantChallenge {
+			t.Fatalf("WWW-Authenticate = %q, want %q", got, wantChallenge)
+		}
+	})
+
+	t.Run("wrong password rejected", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.SetBasicAuth("admin", "wrong")
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rr.Code)
+		}
+	})
+
+	for _, tc := range []struct {
+		name string
+		auth string
+	}{
+		{"wrong bearer token rejected", "Bearer wrong"},
+		{"malformed basic encoding rejected", "Basic !!!"},
+		{"basic credentials without colon rejected", "Basic YWRtaW4="},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/?format=json", nil)
+			req.Header.Set("Authorization", tc.auth)
+			rr := httptest.NewRecorder()
+			server.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", rr.Code)
+			}
+			if got := rr.Header().Get("WWW-Authenticate"); got != wantChallenge {
+				t.Fatalf("WWW-Authenticate = %q, want %q", got, wantChallenge)
+			}
+		})
+	}
+
+	t.Run("valid basic auth lists directory html", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Accept", "text/html")
+		req.SetBasicAuth("admin", "secret")
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "a.txt") {
+			t.Fatalf("body missing a.txt: %s", rr.Body.String())
+		}
+	})
+
+	t.Run("valid basic auth lists directory json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/?format=json", nil)
+		req.SetBasicAuth("admin", "secret")
+		rr := httptest.NewRecorder()
+		server.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		var entries []dirEntry
+		if err := json.Unmarshal(rr.Body.Bytes(), &entries); err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 || entries[0].Name != "a.txt" {
+			t.Fatalf("entries = %+v", entries)
+		}
+	})
+
+	t.Run("valid bearer token also lists directory", func(t *testing.T) {
+		rr := do(t, server, http.MethodGet, "/?format=json", nil, true)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+	})
+}
+
+func TestAuthenticatedDirectoryListingHeaders(t *testing.T) {
+	server, _ := newServer(t)
+	for _, auth := range []string{"basic", "bearer"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			for _, contentType := range []string{"text/html", "application/json"} {
+				t.Run(auth+"/"+method+"/"+contentType, func(t *testing.T) {
+					req := httptest.NewRequest(method, "/", nil)
+					req.Header.Set("Accept", contentType)
+					if auth == "basic" {
+						req.SetBasicAuth("admin", "secret")
+					} else {
+						req.Header.Set("Authorization", "Bearer secret")
+					}
+					rr := httptest.NewRecorder()
+					server.ServeHTTP(rr, req)
+
+					if rr.Code != http.StatusOK {
+						t.Fatalf("status = %d, want 200", rr.Code)
+					}
+					if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, contentType) {
+						t.Fatalf("Content-Type = %q, want %q", got, contentType)
+					}
+					if got := rr.Header().Get("Cache-Control"); got != "private" {
+						t.Fatalf("Cache-Control = %q, want private", got)
+					}
+					if varies := rr.Header().Values("Vary"); !slices.Contains(varies, "Accept") || !slices.Contains(varies, "Authorization") {
+						t.Fatalf("Vary = %v, want Accept and Authorization", varies)
+					}
+					if got := rr.Header().Get("WWW-Authenticate"); got != "" {
+						t.Fatalf("WWW-Authenticate = %q, want empty", got)
+					}
+				})
+			}
+		}
 	}
 }
 
@@ -237,6 +457,12 @@ func TestGetDirectoryIndexHTMLByDefault(t *testing.T) {
 	if strings.Contains(body, "a.txt") {
 		t.Fatalf("directory listing rendered instead of index.html: %s", body)
 	}
+	if got := rr.Header().Get("Cache-Control"); got != "" {
+		t.Fatalf("public index.html Cache-Control = %q, want empty", got)
+	}
+	if varies := rr.Header().Values("Vary"); slices.Contains(varies, "Authorization") {
+		t.Fatalf("public index.html Vary = %v, should not include Authorization", varies)
+	}
 }
 
 func TestGetDirectoryIndexHTMLDoesNotOverrideJSON(t *testing.T) {
@@ -244,7 +470,16 @@ func TestGetDirectoryIndexHTMLDoesNotOverrideJSON(t *testing.T) {
 	os.WriteFile(filepath.Join(dataDir, "index.html"), []byte("<h1>Home</h1>"), 0o644)
 	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
 
-	rr := do(t, server, http.MethodGet, "/?format=json", nil, false)
+	// 即使存在 index.html，默认关闭公开列目录时 JSON 列表仍需鉴权
+	rrUnauth := do(t, server, http.MethodGet, "/?format=json", nil, false)
+	if rrUnauth.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth status = %d, want 401", rrUnauth.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/?format=json", nil)
+	req.SetBasicAuth("admin", "secret")
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d", rr.Code)
 	}
@@ -323,7 +558,7 @@ func TestGetDirectoryRedirectPreservesQuery(t *testing.T) {
 }
 
 func TestGetDirectoryNoSlashWithJSONFormatNotRedirected(t *testing.T) {
-	server, dataDir := newServer(t)
+	server, dataDir := newServerWithPublicDirList(t, true)
 	siteDir := filepath.Join(dataDir, "site")
 	os.Mkdir(siteDir, 0o755)
 	os.WriteFile(filepath.Join(siteDir, "a.txt"), []byte("a"), 0o644)
@@ -340,12 +575,21 @@ func TestGetDirectoryNoSlashWithJSONFormatNotRedirected(t *testing.T) {
 
 func TestGetDirectoryIndexHTMLFallsBackWhenDir(t *testing.T) {
 	server, dataDir := newServer(t)
-	// index.html 本身是目录：应回退到目录列表，不应 ServeFile
+	// index.html 本身是目录：应回退到目录列表（默认需鉴权），不应 ServeFile
 	os.Mkdir(filepath.Join(dataDir, "index.html"), 0o755)
 	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
 
+	reqUnauth := httptest.NewRequest(http.MethodGet, "/", nil)
+	reqUnauth.Header.Set("Accept", "text/html")
+	rrUnauth := httptest.NewRecorder()
+	server.ServeHTTP(rrUnauth, reqUnauth)
+	if rrUnauth.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth status = %d, want 401", rrUnauth.Code)
+	}
+
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Accept", "text/html")
+	req.SetBasicAuth("admin", "secret")
 	rr := httptest.NewRecorder()
 	server.ServeHTTP(rr, req)
 
@@ -359,7 +603,7 @@ func TestGetDirectoryIndexHTMLFallsBackWhenDir(t *testing.T) {
 }
 
 func TestGetDirectoryJSONViaQuery(t *testing.T) {
-	server, dataDir := newServer(t)
+	server, dataDir := newServerWithPublicDirList(t, true)
 	os.WriteFile(filepath.Join(dataDir, "a.txt"), []byte("a"), 0o644)
 	os.Mkdir(filepath.Join(dataDir, "sub"), 0o755)
 
@@ -384,7 +628,7 @@ func TestGetDirectoryJSONViaQuery(t *testing.T) {
 }
 
 func TestGetDirectoryJSONViaAccept(t *testing.T) {
-	server, _ := newServer(t)
+	server, _ := newServerWithPublicDirList(t, true)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Accept", "application/json")
 	rr := httptest.NewRecorder()
@@ -438,7 +682,7 @@ func TestGetFileRange(t *testing.T) {
 }
 
 func TestGetUnicodePath(t *testing.T) {
-	server, dataDir := newServer(t)
+	server, dataDir := newServerWithPublicDirList(t, true)
 	dir := filepath.Join(dataDir, "我的文件夹")
 	os.Mkdir(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "笔记.txt"), []byte("hi"), 0o644)
@@ -462,7 +706,7 @@ func TestGetUnicodePath(t *testing.T) {
 }
 
 func TestReadmeXSSEscaped(t *testing.T) {
-	server, dataDir := newServer(t)
+	server, dataDir := newServerWithPublicDirList(t, true)
 	os.WriteFile(filepath.Join(dataDir, "README.md"), []byte("# T\n<script>alert(1)</script>\n"), 0o644)
 	rr := do(t, server, http.MethodGet, "/", nil, false)
 	if rr.Code != http.StatusOK {
@@ -564,6 +808,34 @@ func TestEscapeURLPath(t *testing.T) {
 	for in, want := range cases {
 		if got := escapeURLPath(in); got != want {
 			t.Errorf("escapeURLPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseBoolEnv(t *testing.T) {
+	cases := []struct {
+		raw        string
+		defaultVal bool
+		want       bool
+		wantErr    bool
+	}{
+		{"", false, false, false},
+		{"   ", true, true, false},
+		{"true", false, true, false},
+		{"TRUE", false, true, false},
+		{"1", false, true, false},
+		{"false", true, false, false},
+		{"0", true, false, false},
+		{"invalid", false, false, true},
+	}
+	for _, c := range cases {
+		got, err := parseBoolEnv(c.raw, c.defaultVal)
+		if (err != nil) != c.wantErr {
+			t.Errorf("parseBoolEnv(%q, %v) err = %v, wantErr=%v", c.raw, c.defaultVal, err, c.wantErr)
+			continue
+		}
+		if !c.wantErr && got != c.want {
+			t.Errorf("parseBoolEnv(%q, %v) = %v, want %v", c.raw, c.defaultVal, got, c.want)
 		}
 	}
 }

@@ -26,10 +26,11 @@ EXPOSE 8080
 ENV DATA_DIR="/data" \
     PORT="8080" \
     PUID="1000" \
-    PGID="1000"
+    PGID="1000" \
+    PUBLIC_DIR_LIST="false"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget -qO /dev/null http://localhost:${PORT:-8080}/ || exit 1
+  CMD nc -z 127.0.0.1 ${PORT:-8080} || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["./restfs"]

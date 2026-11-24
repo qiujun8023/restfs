@@ -18,7 +18,7 @@ func testServer(t *testing.T) http.Handler {
 	}
 
 	h := &handler{dataDir: dataDir, token: "secret"}
-	return withCORS(newMux(h, "secret"))
+	return withCORS(newMux(h))
 }
 
 func TestCORSHeadersOnGet(t *testing.T) {

@@ -16,8 +16,9 @@ import (
 )
 
 type handler struct {
-	dataDir string
-	token   string
+	dataDir       string
+	token         string
+	publicDirList bool
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -102,7 +103,6 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("%s /%s", r.Method, urlPath)
 	if info.IsDir() {
 		h.serveDir(w, r, fsPath, urlPath)
 		return
@@ -114,6 +114,7 @@ func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+	log.Printf("%s /%s", r.Method, urlPath)
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
@@ -186,6 +187,7 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 		indexPath := filepath.Join(fsPath, "index.html")
 		if info, err := os.Stat(indexPath); err == nil {
 			if !info.IsDir() {
+				log.Printf("%s /%s", r.Method, urlPath)
 				http.ServeFile(w, r, indexPath)
 				return
 			}
@@ -194,6 +196,15 @@ func (h *handler) serveDir(w http.ResponseWriter, r *http.Request, fsPath, urlPa
 			return
 		}
 	}
+
+	if !h.publicDirList {
+		w.Header().Add("Vary", "Authorization")
+		w.Header().Set("Cache-Control", "private")
+		if !requireDirListAuth(w, r, h.token) {
+			return
+		}
+	}
+	log.Printf("%s /%s", r.Method, urlPath)
 
 	entries, err := os.ReadDir(fsPath)
 	if err != nil {

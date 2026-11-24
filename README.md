@@ -2,16 +2,17 @@
 
 [中文](README.zh.md)
 
-A lightweight HTTP file server. Reads are public and unauthenticated; writes (upload, overwrite, delete) are protected by a single `ADMIN_TOKEN`.
+A lightweight HTTP file server. File downloads and `index.html` pages are public; directory listing requires Basic Auth by default (optional public toggle via `PUBLIC_DIR_LIST=true`); writes (upload, overwrite, delete) are protected by a single `ADMIN_TOKEN`.
 
 Ideal for distributing build artifacts, firmware images, or as a simple file host.
 
 ## Features
 
-- **Public reads** — browsing directories and downloading files requires no authentication
-- **CORS enabled by default** — public reads and authenticated writes can be called from browsers on other origins
+- **Public file downloads** — downloading files and serving `index.html` pages requires no authentication
+- **Optional public directory listing** — directory listing requires Basic Auth (`admin` / `ADMIN_TOKEN`) by default, and can be opened publicly with `PUBLIC_DIR_LIST=true`
+- **CORS enabled by default** — public reads and authenticated requests can be called from browsers on other origins
 - **Directory listing** — browser-friendly HTML with breadcrumb navigation; returns JSON for API clients via `Accept: application/json`
-- **Index page support** — if a directory contains an `index.html`, it is served instead of the listing for HTML requests; JSON requests still receive the listing
+- **Index page support** — if a directory contains an `index.html`, it is served publicly instead of the listing for HTML requests; JSON requests still return the listing (subject to `PUBLIC_DIR_LIST`)
 - **Markdown rendering** — a `README.md` in any directory is automatically rendered below the file listing; the filename is case-insensitive and raw HTML in it is escaped
 - **Token-protected writes** — `PUT`, `POST`, and `DELETE` require `Authorization: Bearer <ADMIN_TOKEN>`
 - **Auto mkdir** — parent directories are created automatically on upload (both PUT stream and POST multipart)
@@ -24,18 +25,19 @@ Ideal for distributing build artifacts, firmware images, or as a simple file hos
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/<path>` | No | Download a file or list a directory |
+| `GET` | `/<path>` | Files & `index.html`: No; Directory listing: Yes when `PUBLIC_DIR_LIST=false` | Download a file or list a directory |
 | `PUT` | `/<path>` | Yes | Upload a file via raw body stream. Path must include the filename. |
 | `POST` | `/<path>/` | Yes | Upload a file via multipart form (field name: `file`) |
 | `DELETE` | `/<path>` | Yes | Delete a file (directories cannot be deleted) |
 
-Authentication uses the HTTP header: `Authorization: Bearer <ADMIN_TOKEN>`
+- Write authentication uses the HTTP header: `Authorization: Bearer <ADMIN_TOKEN>`
+- Directory listing authentication (when `PUBLIC_DIR_LIST=false`) prompts for HTTP Basic Auth with username `admin` and password `<ADMIN_TOKEN>` (also accepts `Authorization: Bearer <ADMIN_TOKEN>`)
 
 ### CORS
 
 CORS is enabled by default for all routes. The server allows any origin (`Access-Control-Allow-Origin: *`), supports browser preflight requests, and exposes range/download headers such as `Content-Range`, `Accept-Ranges`, `ETag`, and `Last-Modified`.
 
-Authenticated write operations still require `Authorization: Bearer <ADMIN_TOKEN>`.
+Authenticated requests (writes, and directory listings when `PUBLIC_DIR_LIST=false`) still require the `Authorization` header.
 
 ### Content negotiation (GET on a directory)
 
@@ -90,14 +92,15 @@ Directory paths without a trailing slash are redirected with `301` to the canoni
 | `204` | Deleted |
 | `301` | Directory path redirected to trailing-slash form |
 | `400` | Bad request (invalid path, path traversal, attempted directory delete, etc.) |
-| `401` | Missing or invalid token |
+| `401` | Missing or invalid credentials (Bearer token or Basic Auth) |
 | `404` | File or directory not found |
 
 ## Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADMIN_TOKEN` | **required** | Token for write and delete operations |
+| `ADMIN_TOKEN` | **required** | Token for write/delete operations and Basic Auth password for directory listing |
+| `PUBLIC_DIR_LIST` | `false` | Allow unauthenticated directory listing when `true`; when `false`, directory listing requires Basic Auth (`admin` / `ADMIN_TOKEN`) |
 | `DATA_DIR` | `/data` | Root directory for stored files |
 | `PORT` | `8080` | Port the server listens on |
 | `PUID` | `1000` | UID of the user that owns and runs the process |
@@ -151,13 +154,13 @@ curl -X POST \
 ### Browse & download
 
 ```bash
-# HTML directory listing (browser-friendly)
-curl http://localhost:8080/firmware/
+# HTML directory listing (Basic Auth required unless PUBLIC_DIR_LIST=true)
+curl -u "admin:$ADMIN_TOKEN" http://localhost:8080/firmware/
 
 # JSON listing for scripts
-curl -H "Accept: application/json" http://localhost:8080/firmware/
+curl -u "admin:$ADMIN_TOKEN" -H "Accept: application/json" http://localhost:8080/firmware/
 
-# Download a file
+# Download a file (public, no auth required)
 curl -O http://localhost:8080/firmware/v1.0.0/firmware.bin
 ```
 
